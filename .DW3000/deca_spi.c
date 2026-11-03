@@ -72,6 +72,9 @@ int32_t writetospiwithcrc(uint16_t headerLength, const uint8_t *headerBuffer, ui
  */
 int32_t writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t bodyLength, const uint8_t *bodyBuffer)
 {
+    decaIrqStatus_t stat;
+    stat = decamutexon();
+
     
     return 0;
 } // end writetospi()

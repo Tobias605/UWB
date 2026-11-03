@@ -47,17 +47,10 @@
  *
  * returns the state of the DW3xxx/QM33xx interrupt
  */
-decaIrqStatus_t decamutexon(void)
-{
-    while(1){
-
-    }
-    decaIrqStatus_t s = port_GetEXT_IRQStatus();
-
-    if (s)
-    {
-       // port_DisableEXT_IRQ(); // disable the external interrupt line
-    }
+uint32_t decamutexon(void)
+{ 
+    uint32_t s = __get_PRIMASK();
+    __disable_irq();
     return s; // return state before disable, value is used to re-enable in decamutexoff call
 }
 
@@ -76,13 +69,8 @@ decaIrqStatus_t decamutexon(void)
  *
  * returns the state of the DW3xxx/QM33xx interrupt
  */
-void decamutexoff(decaIrqStatus_t s) // put a function here that re-enables the interrupt at the end of the critical section
+void decamutexoff(uint32_t s) // put a function here that re-enables the interrupt at the end of the critical section
 {
-    while(1){
-        
-    }
-    if (s)
-    { // need to check the port state as we can't use level sensitive interrupt on the STM ARM
-        //port_EnableEXT_IRQ();
-    }
+    __set_PRIMASK(s);
+    
 }

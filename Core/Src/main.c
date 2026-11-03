@@ -22,7 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "examples_defines.h"
-
+#include "port.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,7 +43,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint32_t test;
+uint32_t test2;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,7 +71,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -118,7 +119,11 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+  SPI1->SR;
+  test = LL_TIM_GetCounter(TIM1);
+  usleep(100);
+  test2 = LL_TIM_GetCounter(TIM1);
+  usleep(100);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
