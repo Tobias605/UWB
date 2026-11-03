@@ -1,0 +1,50 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STM32F401: Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+
+            "executable": "${workspaceFolder}/build/UWBMico.elf",
+
+            "servertype": "stlink",
+            "device": "STM32F401RCT6",
+            "interface": "swd",
+
+            "serverpath": "${env:STM32CLT_Path}/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
+            "stm32cubeprogrammer": "${env:STM32CLT_Path}/STM32CubeProgrammer/bin",
+            "armToolchainPath": "${env:STM32CLT_Path}/GNU-tools-for-STM32/bin",
+            "gdbPath": "${env:STM32CLT_Path}/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+
+            "svdFile": "${env:STM32CLT_Path}/STMicroelectronics_CMSIS_SVD/STM32F401.svd",
+
+            "runToEntryPoint": "main",
+            "preLaunchTask": "STM32F401 Build",
+
+            "showDevDebugOutput": "parsed"
+        },
+        {
+            "name": "STM32F401: Attach",
+            "type": "cortex-debug",
+            "request": "attach",
+            "cwd": "${workspaceFolder}",
+
+            "executable": "${workspaceFolder}/build/UWBMico.elf",
+
+            "servertype": "stlink",
+            "device": "STM32F401RCT6",
+            "interface": "swd",
+
+            "serverpath": "${env:STM32CLT_Path}/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
+            "stm32cubeprogrammer": "${env:STM32CLT_Path}/STM32CubeProgrammer/bin",
+            "armToolchainPath": "${env:STM32CLT_Path}/GNU-tools-for-STM32/bin",
+            "gdbPath": "${env:STM32CLT_Path}/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+
+            "svdFile": "${env:STM32CLT_Path}/STMicroelectronics_CMSIS_SVD/STM32F401.svd",
+
+            "showDevDebugOutput": "parsed"
+        }
+    ]
+}
