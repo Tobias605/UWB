@@ -57,19 +57,14 @@ static volatile uint32_t signalResetDone;
  * @brief precise usleep() delay
  * */
 #pragma GCC optimize("O0")
-int usleep(//useconds_t 
-    uint16_t usec)
+int usleep(uint16_t usec)
 {
-    while(1){
-
+    for(uint32_t start = LL_TIM_GetCounter(TIM1); ((LL_TIM_GetCounter(TIM1)-start) & UINT16_MAX) < usec; )
+    {
+       
     }
-    // unsigned int i;
-
-    // usec *= 12;
-    // for (i = 0; i < usec; i++)
-    // {
-    //     __NOP();
-    // }
+    
+    
     return 0;
 }
 
@@ -98,16 +93,8 @@ __INLINE void Sleep(uint32_t x){
  *
  *******************************************************************************/
 
-/* @fn    peripherals_init
- * */
-int peripherals_init(void)
-{
-    // while(1){
-        
-    // }
-    /* All has been initialized in the CubeMx code, see main.c */
-    return 0;
-}
+
+
 
 
 /**
@@ -139,64 +126,14 @@ int peripherals_init(void)
  * */
 void reset_DWIC(void)
 {
-    while(1){
-        
-    }
-    // GPIO_InitTypeDef GPIO_InitStruct;
-
-    // // Enable GPIO used for DW3xxx/QM33xx reset as open collector output
-    // GPIO_InitStruct.Pin = DW_RESET_Pin;
-    // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-    // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    // HAL_GPIO_Init(DW_RESET_GPIO_Port, &GPIO_InitStruct);
-
-    // // drive the RSTn pin low
-    // HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_RESET);
-
-    // usleep(1);
-
-    // // put the pin back to output open-drain (not active)
-    // setup_DWICRSTnIRQ(0);
-    // Sleep(2);
+    LL_GPIO_ResetOutputPin(GPIOG, LL_GPIO_PIN_12); //RSTn low
+    usleep(1);
+    LL_GPIO_SetOutputPin(GPIOG, LL_GPIO_PIN_12); //RSTn high
+    LL_mDelay(2); // Time needed for DW3000 to start up (transition from INIT_RC to IDLE_RC, or could wait for SPIRDY event)   
 }
 
-/* @fn      setup_DWICRSTnIRQ
- * @brief   setup the DW_RESET pin mode
- *          0 - output Open collector mode
- *          !0 - input mode with connected EXTI0 IRQ
- * */
-void setup_DWICRSTnIRQ(int enable)
-{
-    while(1){
-        
-    }
-    // GPIO_InitTypeDef GPIO_InitStruct;
 
-    // if (enable)
-    // {
-    //     // Enable GPIO used as DECA RESET for interrupt
-    //     GPIO_InitStruct.Pin = DW_RESET_Pin;
-    //     GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-    //     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    //     HAL_GPIO_Init(DW_RESET_GPIO_Port, &GPIO_InitStruct);
 
-    //     HAL_NVIC_EnableIRQ(EXTI0_IRQn); // pin #0 -> EXTI #0
-    //     HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
-    // }
-    // else
-    // {
-    //     HAL_NVIC_DisableIRQ(EXTI0_IRQn); // pin #0 -> EXTI #0
-
-    //     // put the pin back to tri-state ... as
-    //     // output open-drain (not active)
-    //     GPIO_InitStruct.Pin = DW_RESET_Pin;
-    //     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-    //     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    //     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    //     HAL_GPIO_Init(DW_RESET_GPIO_Port, &GPIO_InitStruct);
-    //     HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_SET);
-    // }
-}
 
 /*! ------------------------------------------------------------------------------------------------------------------
  * @fn wakeup_device_with_io()
@@ -208,11 +145,11 @@ void setup_DWICRSTnIRQ(int enable)
  * output -None
  *
  */
-void wakeup_device_with_io(void)
+void wakeup_device_with_io(void)  //hier wakeup mit CS? muss dann die mosi low sein?
 {
-    while(1){
-
-    }
+    LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14);
+    usleep(500);
+    LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14);
 }
 
 /*! ------------------------------------------------------------------------------------------------------------------
@@ -286,25 +223,27 @@ void make_very_short_wakeup_io(void)
 
 
 /* @fn      port_set_dw_ic_spi_slowrate
- * @brief   set 4.5MHz
+ * @brief   sets SPI1 to 4.5MBits/s
  *          note: hspi1 is clocked from 72MHz
  * */
 void port_set_dw_ic_spi_slowrate(void)
 {
-    while(1){
-        
-    }
+    LL_SPI_Disable(SPI1);
+    LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV32);
+    LL_SPI_Enable(SPI1);
+    LL_SPI_StartMasterTransfer(SPI1);
 }
 
 /* @fn      port_set_dw_ic_spi_fastrate
- * @brief   set 18MHz
+ * @brief   sets SPI1 to 36MBits/s
  *          note: hspi1 is clocked from 72MHz
  * */
 void port_set_dw_ic_spi_fastrate(void)
 {
-    while(1){
-        
-    }
+    LL_SPI_Disable(SPI1);
+    LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV4);
+    LL_SPI_Enable(SPI1);
+    LL_SPI_StartMasterTransfer(SPI1);
 }
 
 

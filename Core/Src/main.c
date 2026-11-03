@@ -103,9 +103,12 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  LL_SPI_Enable(SPI1);
+  LL_TIM_EnableCounter(TIM1);
+  LL_SPI_StartMasterTransfer(SPI1);
   example_pointer();
 
-  LL_mDelay(500);
+
   
 
   /* USER CODE END 2 */
