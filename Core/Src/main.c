@@ -71,7 +71,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  
+  LL_SPI_IsActiveFlag_BSY(SPI1);
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -106,7 +106,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LL_SPI_Enable(SPI1);
   LL_TIM_EnableCounter(TIM1);
-  LL_SPI_StartMasterTransfer(SPI1);
+  LL_SPI_StartMasterTransfer(SPI1); // KI sagt dass der besser in der write und read funktion gestartet wird.
   example_pointer();
 
 
@@ -119,7 +119,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-  SPI1->SR;
+  
   test = LL_TIM_GetCounter(TIM1);
   usleep(100);
   test2 = LL_TIM_GetCounter(TIM1);

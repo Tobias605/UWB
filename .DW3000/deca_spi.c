@@ -15,7 +15,7 @@
 #include <deca_spi.h>
 #include <port.h>
 //#include <stm32f4xx_hal_def.h>
-
+#include "main.h"
 
 //extern SPI_HandleTypeDef    *hcurrent_active_spi;/*clocked from 72MHz*/
 //extern uint16_t             pin_io_active_spi;
@@ -73,9 +73,48 @@ int32_t writetospiwithcrc(uint16_t headerLength, const uint8_t *headerBuffer, ui
 int32_t writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t bodyLength, const uint8_t *bodyBuffer)
 {
     decaIrqStatus_t stat;
+
     stat = decamutexon();
 
+    LL_SPI_SetTransferSize(SPI1, headerLength + bodyLength);
+
+    LL_SPI_ClearFlag_EOT(SPI1);
+
+    LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
     
+    LL_SPI_StartMasterTransfer(SPI1);
+
+    for (uint16_t i = 0; i < headerLength; i++) //transmit header
+    {           
+        while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
+            //wait (muss ich hier warten oder könnte ich auch mit interrupt arbeiten?)
+        }
+        LL_SPI_TransmitData8(SPI1, headerBuffer[i]); 
+        
+        while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
+            //wait
+        }
+        LL_SPI_ReceiveData8(SPI1); //read dummy data
+    }
+    for (uint16_t i = 0; i < bodyLength; i++) //transmit body
+    {           
+        while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
+            //wait
+        }
+        LL_SPI_TransmitData8(SPI1, bodyBuffer[i]);
+
+        while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
+            //wait
+        }
+        LL_SPI_ReceiveData8(SPI1); //read dummy data    
+    }
+    while (!LL_SPI_IsActiveFlag_EOT(SPI1)){ 
+        //wait for end of transfer
+    }
+    LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
+
+    decamutexoff(stat);
+
     return 0;
 } // end writetospi()
 
@@ -91,8 +130,12 @@ int32_t writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t 
  */
 uint16_t spi_cs_low_delay(uint16_t delay_ms)
 {
-   
-
+    while (!LL_SPI_IsActiveFlag_EOT(SPI1)){ 
+        //wait for end of transfer
+    }
+    LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
+    sleep(delay_ms); //wait for delay_ms
+    LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
     return 0;
 }
 
@@ -107,6 +150,41 @@ uint16_t spi_cs_low_delay(uint16_t delay_ms)
 //#pragma GCC optimize ("O3")
 int32_t readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readlength, uint8_t *readBuffer)
 {
+    decaIrqStatus_t stat;
+
+    stat = decamutexon();
+    LL_SPI_SetTransferSize(SPI1, headerLength + readlength);
+    LL_SPI_ClearFlag_EOT(SPI1);
+    LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
+    LL_SPI_StartMasterTransfer(SPI1);
+    
+    for (uint16_t i = 0; i < headerLength; i++)
+    {           
+        while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
+            //wait
+        }
+        LL_SPI_TransmitData8(SPI1, headerBuffer[i]); //send header  
+        while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
+            //wait
+        }
+        LL_SPI_ReceiveData8(SPI1); //read dummy data
+    }
+    for (uint16_t i = 0; i < readlength; i++)
+    {           
+        while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
+            //wait
+        }
+        LL_SPI_TransmitData8(SPI1, 0x00); //send dummy data to read
+        while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
+            //wait
+        }
+        readBuffer[i] = LL_SPI_ReceiveData8(SPI1); //read data
+    }
+    while (!LL_SPI_IsActiveFlag_EOT(SPI1)){
+        //wait for end of transfer
+    }
+    LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
+    decamutexoff(stat);
 
     return 0;
 } // end readfromspi()
