@@ -12,6 +12,8 @@
 
 #include <deca_device_api.h>
 #include <port.h>
+#include "stm32h7xx.h"
+#include "core_cm7.h"
 // ---------------------------------------------------------------------------
 //
 // NB: The purpose of this file is to provide for microprocessor interrupt enable/disable, this is used for
@@ -47,12 +49,14 @@
  *
  * returns the state of the DW3xxx/QM33xx interrupt
  */
-uint32_t decamutexon(void)
+decaIrqStatus_t decamutexon(void)
 { 
-    uint32_t s = __get_PRIMASK();
+    decaIrqStatus_t s = (decaIrqStatus_t) __get_PRIMASK();
     __disable_irq();
+
     return s; // return state before disable, value is used to re-enable in decamutexoff call
 }
+
 
 /*! ------------------------------------------------------------------------------------------------------------------
  * Function: decamutexoff()
@@ -69,8 +73,10 @@ uint32_t decamutexon(void)
  *
  * returns the state of the DW3xxx/QM33xx interrupt
  */
-void decamutexoff(uint32_t s) // put a function here that re-enables the interrupt at the end of the critical section
+void decamutexoff(decaIrqStatus_t s) // put a function here that re-enables the interrupt at the end of the critical section
 {
     __set_PRIMASK(s);
     
 }
+
+

@@ -134,7 +134,7 @@ uint16_t spi_cs_low_delay(uint16_t delay_ms)
         //wait for end of transfer
     }
     LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
-    sleep(delay_ms); //wait for delay_ms
+    Sleep(delay_ms); //wait for delay_ms
     LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
     return 0;
 }

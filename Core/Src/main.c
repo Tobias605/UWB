@@ -23,6 +23,13 @@
 /* USER CODE BEGIN Includes */
 #include "examples_defines.h"
 #include "port.h"
+#include "deca_probe_interface.h"
+#include <deca_device_api.h>
+#include <deca_spi.h>
+#include <example_selection.h>
+#include <port.h>
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,8 +50,36 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint32_t test;
-uint32_t test2;
+static uint8_t tag = 1; //1 = tag, 0 = anchor
+static uint8_t timestamp[5];
+static uint8_t rx_timestamp[5];
+static uint8_t rx_timestamp2[5];
+static uint64_t delay = 0;
+static double distance = 0;
+static uint8_t rx_buffer[128];
+
+dwt_config_t config =
+{
+    5,                  // Channel 5
+    DWT_PLEN_128,       // Preamble length
+    DWT_PAC8,           // PAC size
+    9,                  // TX preamble code
+    9,                  // RX preamble code
+    1,                  // Non-standard 8-symbol SFD
+    DWT_BR_6M8,         // 6.8 Mbps
+    DWT_PHRMODE_STD,    // Standard PHR
+    DWT_PHRRATE_STD,    // Standard PHR rate
+    129,                // SFD timeout
+    DWT_STS_MODE_OFF,   // STS disabled
+    DWT_STS_LEN_64,     // STS length (unused)
+    DWT_PDOA_M0         // PDOA disabled
+};
+
+dwt_txconfig_t txconfig_options = {
+    0x34,       /* PG delay. */
+    0xfdfdfdfd, /* TX power. */
+    0x0         /*PG count*/
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +90,10 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-
+void send_ranging(void);
+void receive_ranging(void);
+void waitforsysstatus(uint32_t *lo_result, uint32_t *hi_result, uint32_t lo_mask, uint32_t hi_mask);
+uint64_t timestamp_to_64bit(uint8_t *timestamp);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -71,7 +109,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  LL_SPI_IsActiveFlag_BSY(SPI1);
+  
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -86,7 +124,9 @@ int main(void)
   NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
 
   /* USER CODE BEGIN Init */
-  build_examples();
+  //build_examples();
+
+  
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -107,9 +147,21 @@ int main(void)
   LL_SPI_Enable(SPI1);
   LL_TIM_EnableCounter(TIM1);
   LL_SPI_StartMasterTransfer(SPI1); // KI sagt dass der besser in der write und read funktion gestartet wird.
-  example_pointer();
 
+  if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
+{
+    Error_Handler();
+}
+  if (dwt_configure(&config) == DWT_ERROR)
+{
+    Error_Handler();
+}
+  dwt_configuretxrf(&txconfig_options);
+  dwt_setrxaftertxdelay(0);
+  dwt_setrxtimeout(3000);
+  //example_pointer();
 
+  
   
 
   /* USER CODE END 2 */
@@ -118,12 +170,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    
+    if(tag==1){
+      send_ranging();
+    }
+    else{
+      receive_ranging();
+    }
+    
     /* USER CODE END WHILE */
   
-  test = LL_TIM_GetCounter(TIM1);
-  usleep(100);
-  test2 = LL_TIM_GetCounter(TIM1);
-  usleep(100);
+  
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -385,6 +442,149 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void send_ranging(void){
+  
+  uint8_t tx_msg[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0x43, 0x02, 0, 0 };
+  port_set_dw_ic_spi_fastrate();
+  dwt_forcetrxoff();
+  dwt_writetxdata(sizeof(tx_msg), tx_msg, 0);
+  dwt_writetxfctrl(sizeof(tx_msg), 0, 1);
+  dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
+  while (!(dwt_readsysstatuslo() & DWT_INT_TXFRS_BIT_MASK))//warte bis Übertragung abgeschlossen ist
+  {
+  }
+  dwt_readtxtimestamp(timestamp);
+  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
+
+  waitforsysstatus(NULL, NULL, (DWT_INT_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR), 0);
+  if(dwt_readsysstatuslo() & DWT_INT_RXFCG_BIT_MASK)
+  {
+    dwt_readrxdata(rx_buffer, dwt_getframelength(0), 0);
+    dwt_readrxtimestamp(rx_timestamp,DWT_COMPAT_NONE);
+    dwt_writesysstatuslo(DWT_INT_RXFCG_BIT_MASK);
+  }
+  else //fehlerhaftes Paket empfangen
+  {
+    dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+  }
+
+  uint8_t tx_msg2[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0,0,0,0,0,0,0,0,0,0,0x43, 0x02, 0, 0 }; //könnte man natürlich kleiner machen
+  for(int i = 0; i < 5; i++) //die timestamps in das zu sendende Paket schreiben
+  {
+    tx_msg2[10 + i] = timestamp[i]; //10 stellen nach DECAWAVE ersten 5 die sendezeit des ersten und danach die empfangszeit des antwortpakets
+    tx_msg2[15 + i] = rx_timestamp[i]; 
+  }
+  dwt_writetxdata(sizeof(tx_msg2), tx_msg2, 0);
+  dwt_writetxfctrl(sizeof(tx_msg2), 0, 1);
+  dwt_starttx(DWT_START_TX_IMMEDIATE);
+  
+  
+}
+void receive_ranging(void){
+  uint8_t tag_timestamp[5];
+  uint8_t tag_rx_timestamp[5];
+  port_set_dw_ic_spi_fastrate();
+  dwt_rxenable(DWT_START_RX_IMMEDIATE);
+  waitforsysstatus(NULL, NULL, (DWT_INT_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR), 0);
+  if(dwt_readsysstatuslo() & DWT_INT_RXFCG_BIT_MASK)
+  {
+    dwt_readrxdata(rx_buffer, dwt_getframelength(0), 0);
+    dwt_readrxtimestamp(rx_timestamp,DWT_COMPAT_NONE);
+    dwt_writesysstatuslo(DWT_INT_RXFCG_BIT_MASK);
+  }
+  else //fehlerhaftes Paket empfangen
+  {
+    dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+  }
+
+
+  uint8_t tx_msg[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0x43, 0x02, 0, 0 };
+  dwt_forcetrxoff();
+  dwt_writetxdata(sizeof(tx_msg), tx_msg, 0);
+  dwt_writetxfctrl(sizeof(tx_msg), 0, 1);
+  dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
+  while (!(dwt_readsysstatuslo() & DWT_INT_TXFRS_BIT_MASK))//warte bis Übertragung abgeschlossen ist
+  {
+  }
+  dwt_readtxtimestamp(timestamp);
+  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
+
+
+  waitforsysstatus(NULL, NULL, (DWT_INT_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR), 0); //wait for the response
+  if(dwt_readsysstatuslo() & DWT_INT_RXFCG_BIT_MASK) //read response if ok
+  {
+    dwt_readrxdata(rx_buffer, dwt_getframelength(0), 0);
+    dwt_readrxtimestamp(rx_timestamp2,DWT_COMPAT_NONE);
+    dwt_writesysstatuslo(DWT_INT_RXFCG_BIT_MASK);
+    
+    for(int i = 0; i < 5; i++) //die anderen timestamps aus dem empfangenen Paket auslesen
+    {
+      tag_timestamp[i] = rx_buffer[10 + i];
+      tag_rx_timestamp[i] = rx_buffer[15 + i];
+    }
+  }
+  else //fehlerhaftes Paket empfangen
+  {
+    dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+  }
+  uint64_t time_of_flight;
+  //zeit zwichen empfangen und senden der nachricht
+  delay = timestamp_to_64bit(timestamp) - timestamp_to_64bit(rx_timestamp); 
+  //gesamte zeit zwichen ersten sendung und dem ankommen der antwort minus dem delay im DW selber also nur die flugzeit
+  time_of_flight = timestamp_to_64bit(tag_rx_timestamp) - timestamp_to_64bit(tag_timestamp) - delay; 
+  //flugzeit*lightspeed /2 *conversion from UWB time units to seconds also sollte hier die Distanz in Metern rauskommen
+  distance = (double) time_of_flight * 149896229 * (1.0 / (499.2e6 * 128.0)); 
+}
+
+uint64_t timestamp_to_64bit(uint8_t *timestamp) //evtl anders herum wenn die bytes in der falschen reihenfolge sind Little-Endian vs Big-Endian
+{
+  uint64_t ts = 0;
+  for (int i = 0; i < 5; i++)
+  {
+    ts <<= 8;
+    ts |= timestamp[i];
+  }
+  return ts;
+}
+
+void waitforsysstatus(uint32_t *lo_result, uint32_t *hi_result, uint32_t lo_mask, uint32_t hi_mask)
+{
+    uint32_t lo_result_tmp = 0;
+    uint32_t hi_result_tmp = 0;
+
+    // If a mask has been passed into the function for the system status register (lower 32-bits)
+    if (lo_mask)
+    {
+        while (!((lo_result_tmp = dwt_readsysstatuslo()) & (lo_mask)))
+        {
+            // If a mask value is set for the system status register (higher 32-bits)
+            if (hi_mask)
+            {
+                // If mask value for the system status register (higher 32-bits) is found
+                if ((hi_result_tmp = dwt_readsysstatushi()) & hi_mask)
+                {
+                    break;
+                }
+            }
+        }
+    }
+    // if only a mask value for the system status register (higher 32-bits) is set
+    else if (hi_mask)
+    {
+        while (!((hi_result_tmp = dwt_readsysstatushi()) & (hi_mask))) { };
+    }
+
+    if (lo_result != NULL)
+    {
+        *lo_result = lo_result_tmp;
+    }
+
+    if (hi_result != NULL)
+    {
+        *hi_result = hi_result_tmp;
+    }
+}
+
 
 /* USER CODE END 4 */
 
