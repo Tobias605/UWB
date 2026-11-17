@@ -28,6 +28,7 @@
 #include <deca_spi.h>
 #include <example_selection.h>
 #include <port.h>
+#include <stdio.h>
 
 
 /* USER CODE END Includes */
@@ -211,17 +212,38 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    static uint8_t tx_poll_msg[] = { 0x41, 0x88, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0xE0, 0, 0 };
+    //static uint8_t tx_poll_msg[] = { 0x41, 0x88, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0xE0, 0, 0 };
+    uint16_t time = 12345;
+    char buffer[10];
 
+    sprintf(buffer, "%u\r\n", time);
+
+    for (int i = 0; buffer[i] != '\0'; i++)
+    {
+        while (!LL_USART_IsActiveFlag_TXE_TXFNF(USART3))
+        {
+            // Wait for transmit FIFO to be ready
+        }
+
+        LL_USART_TransmitData8(USART3, buffer[i]);
+    }
+
+    while (!LL_USART_IsActiveFlag_TC(USART3))
+    {
+        // Wait until the last stop bit has been transmitted
+    }
+
+    Sleep(1000U);
   
-  
-  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
-  //Sleep(100U);
-  dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
-  //Sleep(100U);
-  dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
-  dwt_starttx(DWT_START_TX_IMMEDIATE);
-  Sleep(100U);
+    // dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
+    // //Sleep(100U);
+    // dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
+    // //Sleep(100U);
+    // dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
+    // dwt_starttx(DWT_START_TX_IMMEDIATE);
+    // Sleep(100U);
+
+
     // if(tag==1){
     //   send_ranging();
     // }
@@ -448,18 +470,18 @@ static void MX_USART3_UART_Init(void)
   /* Peripheral clock enable */
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USART3);
 
-  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOB);
+  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOD);
   /**USART3 GPIO Configuration
-  PB10   ------> USART3_TX
-  PB11   ------> USART3_RX
+  PD8   ------> USART3_TX
+  PD9   ------> USART3_RX
   */
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_10|LL_GPIO_PIN_11;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_8|LL_GPIO_PIN_9;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_7;
-  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  LL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN USART3_Init 1 */
 
@@ -510,9 +532,9 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOF);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOA);
-  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOB);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOD);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOG);
+  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOB);
 
   /**/
   LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14);
