@@ -229,9 +229,9 @@ void make_very_short_wakeup_io(void)
 void port_set_dw_ic_spi_slowrate(void)
 {
     LL_SPI_Disable(SPI1);
-    LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV32);
+    LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV128);
     LL_SPI_Enable(SPI1);
-    LL_SPI_StartMasterTransfer(SPI1);
+    
 }
 
 /* @fn      port_set_dw_ic_spi_fastrate
@@ -243,7 +243,7 @@ void port_set_dw_ic_spi_fastrate(void)
     LL_SPI_Disable(SPI1);
     LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV4);
     LL_SPI_Enable(SPI1);
-    LL_SPI_StartMasterTransfer(SPI1);
+    
 }
 
 

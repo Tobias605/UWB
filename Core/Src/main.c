@@ -39,7 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define TS_MASK 0xFFFFFFFFFFULL //maske um die 40 bit timestamp overflow zu behandeln.
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,8 +49,14 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+UART_HandleTypeDef huart3;
+
 /* USER CODE BEGIN PV */
-static uint8_t tag = 1; //1 = tag, 0 = anchor
+#if defined(APP_UWB_ROLE_INITIATOR)
+static uint8_t tag = 1; //1 = INITIATOR, 0 = RESPONDER
+#else 
+static uint8_t tag = 0; //1 = INITIATOR, 0 = RESPONDER
+#endif 
 static uint8_t timestamp[5];
 static uint8_t rx_timestamp[5];
 static uint8_t rx_timestamp2[5];
@@ -60,19 +66,33 @@ static uint8_t rx_buffer[128];
 
 dwt_config_t config =
 {
-    5,                  // Channel 5
-    DWT_PLEN_128,       // Preamble length
-    DWT_PAC8,           // PAC size
-    9,                  // TX preamble code
-    9,                  // RX preamble code
-    1,                  // Non-standard 8-symbol SFD
-    DWT_BR_6M8,         // 6.8 Mbps
-    DWT_PHRMODE_STD,    // Standard PHR
-    DWT_PHRRATE_STD,    // Standard PHR rate
-    129,                // SFD timeout
-    DWT_STS_MODE_OFF,   // STS disabled
-    DWT_STS_LEN_64,     // STS length (unused)
-    DWT_PDOA_M0         // PDOA disabled
+    // 5,                  // Channel 5
+    // DWT_PLEN_128,       // Preamble length
+    // DWT_PAC8,           // PAC size
+    // 9,                  // TX preamble code
+    // 9,                  // RX preamble code
+    // DWT_SFD_IEEE_4A,    // IEEE 802.15.4-2003 SFD
+    // DWT_BR_6M8,         // 6.8 Mbps
+    // DWT_PHRMODE_STD,    // Standard PHR
+    // DWT_PHRRATE_STD,    // Standard PHR rate
+    // 129,                // SFD timeout
+    // DWT_STS_MODE_OFF,   // STS disabled
+    // DWT_STS_LEN_64,     // STS length (unused)
+    // DWT_PDOA_M0         // PDOA disabled
+
+    5,                 /* Channel number. */
+    DWT_PLEN_128,      /* Preamble length. Used in TX only. */
+    DWT_PAC8,          /* Preamble acquisition chunk size. Used in RX only. */
+    9,                 /* TX preamble code. Used in TX only. */
+    9,                 /* RX preamble code. Used in RX only. */
+    1,                 /* 0 to use standard 8 symbol SFD, 1 to use non-standard 8 symbol, 2 for non-standard 16 symbol SFD and 3 for 4z 8 symbol SDF type */
+    DWT_BR_6M8,        /* Data rate. */
+    DWT_PHRMODE_STD,   /* PHY header mode. */
+    DWT_PHRRATE_STD,   /* PHY header rate. */
+    (128 + 1 + 8 - 8), /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
+    DWT_STS_MODE_OFF,  /* No STS mode enabled (STS Mode 0) */
+    DWT_STS_LEN_64,    /* (STS length  in blocks of 8) - 1*/
+    DWT_PDOA_M0        /* PDOA mode off */
 };
 
 dwt_txconfig_t txconfig_options = {
@@ -89,6 +109,7 @@ static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void send_ranging(void);
 void receive_ranging(void);
@@ -102,9 +123,9 @@ uint64_t timestamp_to_64bit(uint8_t *timestamp);
 /* USER CODE END 0 */
 
 /**
- * @brief  The application entry point.
- * @retval int
- */
+  * @brief  The application entry point.
+  * @retval int
+  */
 int main(void)
 {
 
@@ -118,10 +139,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  LL_APB4_GRP1_EnableClock(LL_APB4_GRP1_PERIPH_SYSCFG);
-
-  /* System interrupt init*/
-  NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
   //build_examples();
@@ -143,22 +161,44 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   LL_SPI_Enable(SPI1);
+  
+  while(!LL_SPI_IsEnabled(SPI1))
+  {
+    //wait until SPI is enabled
+  }
   LL_TIM_EnableCounter(TIM1);
-  LL_SPI_StartMasterTransfer(SPI1); // KI sagt dass der besser in der write und read funktion gestartet wird.
-
-  if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
+  //LL_SPI_StartMasterTransfer(SPI1); // KI sagt dass der besser in der write und read funktion gestartet wird.
+  reset_DWIC();
+  Sleep(2U);
+  port_set_dw_ic_spi_slowrate();
+  if(dwt_probe(&dw3000_probe_interf) != DWT_SUCCESS)
+  {
+    Error_Handler();
+  }
+  while (dwt_checkidlerc() == 0)
+  {
+    //wait until the device is in IDLE_RC state
+  }
+  if (dwt_initialise(DWT_READ_OTP_ALL) == DWT_ERROR)
 {
     Error_Handler();
 }
+
   if (dwt_configure(&config) == DWT_ERROR)
 {
     Error_Handler();
 }
+  dwt_setleds(DWT_LEDS_ENABLE | DWT_LEDS_INIT_BLINK);
   dwt_configuretxrf(&txconfig_options);
-  dwt_setrxaftertxdelay(0);
-  dwt_setrxtimeout(3000);
+  dwt_setrxantennadelay(16385);
+  dwt_settxantennadelay(16385);
+  dwt_setrxaftertxdelay(240);
+  dwt_setrxtimeout(400);
+  dwt_setlnapamode(DWT_LNA_ENABLE);
+  //port_set_dw_ic_spi_fastrate();
   //example_pointer();
 
   
@@ -170,30 +210,39 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    
-    if(tag==1){
-      send_ranging();
-    }
-    else{
-      receive_ranging();
-    }
+    static uint8_t tx_poll_msg[] = { 0x41, 0x88, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0xE0, 0, 0 };
+
+  
+  
+  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
+  //Sleep(100U);
+  dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
+  //Sleep(100U);
+  dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
+  dwt_starttx(DWT_START_TX_IMMEDIATE);
+  Sleep(100U);
+    // if(tag==1){
+    //   send_ranging();
+    // }
+    // else{
+    //   receive_ranging();
+    // }
     
     /* USER CODE END WHILE */
-  
-  
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
 
 /**
- * @brief System Clock Configuration
- * @retval None
- */
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
   LL_FLASH_SetLatency(LL_FLASH_LATENCY_4);
-  while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_4)
+  while(LL_FLASH_GetLatency()!= LL_FLASH_LATENCY_4)
   {
   }
   LL_PWR_ConfigSupply(LL_PWR_LDO_SUPPLY);
@@ -203,9 +252,10 @@ void SystemClock_Config(void)
   }
   LL_RCC_HSI_Enable();
 
-  /* Wait till HSI is ready */
-  while (LL_RCC_HSI_IsReady() != 1)
+   /* Wait till HSI is ready */
+  while(LL_RCC_HSI_IsReady() != 1)
   {
+
   }
   LL_RCC_HSI_SetCalibTrimming(64);
   LL_RCC_HSI_SetDivider(LL_RCC_HSI_DIV1);
@@ -221,19 +271,20 @@ void SystemClock_Config(void)
   LL_RCC_PLL1_SetR(2);
   LL_RCC_PLL1_Enable();
 
-  /* Wait till PLL is ready */
-  while (LL_RCC_PLL1_IsReady() != 1)
+   /* Wait till PLL is ready */
+  while(LL_RCC_PLL1_IsReady() != 1)
   {
   }
 
-  /* Intermediate AHB prescaler 2 when target frequency clock is higher than 80 MHz */
-  LL_RCC_SetAHBPrescaler(LL_RCC_AHB_DIV_2);
+   /* Intermediate AHB prescaler 2 when target frequency clock is higher than 80 MHz */
+   LL_RCC_SetAHBPrescaler(LL_RCC_AHB_DIV_2);
 
   LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL1);
 
-  /* Wait till System clock is ready */
-  while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL1)
+   /* Wait till System clock is ready */
+  while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL1)
   {
+
   }
   LL_RCC_SetSysPrescaler(LL_RCC_SYSCLK_DIV_1);
   LL_RCC_SetAHBPrescaler(LL_RCC_AHB_DIV_2);
@@ -241,16 +292,19 @@ void SystemClock_Config(void)
   LL_RCC_SetAPB2Prescaler(LL_RCC_APB2_DIV_2);
   LL_RCC_SetAPB3Prescaler(LL_RCC_APB3_DIV_2);
   LL_RCC_SetAPB4Prescaler(LL_RCC_APB4_DIV_2);
-
-  LL_Init1msTick(480000000);
-
   LL_SetSystemCoreClock(480000000);
+
+   /* Update the time base */
+  if (HAL_InitTick (TICK_INT_PRIORITY) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**
- * @brief Peripherals Common Clock Configuration
- * @retval None
- */
+  * @brief Peripherals Common Clock Configuration
+  * @retval None
+  */
 void PeriphCommonClock_Config(void)
 {
   LL_RCC_PLL2P_Enable();
@@ -263,17 +317,18 @@ void PeriphCommonClock_Config(void)
   LL_RCC_PLL2_SetR(2);
   LL_RCC_PLL2_Enable();
 
-  /* Wait till PLL is ready */
-  while (LL_RCC_PLL2_IsReady() != 1)
+   /* Wait till PLL is ready */
+  while(LL_RCC_PLL2_IsReady() != 1)
   {
   }
+
 }
 
 /**
- * @brief SPI1 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_SPI1_Init(void)
 {
 
@@ -297,7 +352,7 @@ static void MX_SPI1_Init(void)
   PA6   ------> SPI1_MISO
   PB5   ------> SPI1_MOSI
   */
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_5 | LL_GPIO_PIN_6;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_5|LL_GPIO_PIN_6;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
@@ -334,13 +389,14 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
 }
 
 /**
- * @brief TIM1 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_TIM1_Init(void)
 {
 
@@ -370,13 +426,62 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
+
 }
 
 /**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_GPIO_Init(void)
 {
   LL_EXTI_InitTypeDef EXTI_InitStruct = {0};
@@ -388,9 +493,9 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOF);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOA);
+  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOB);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOD);
   LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOG);
-  LL_AHB4_GRP1_EnableClock(LL_AHB4_GRP1_PERIPH_GPIOB);
 
   /**/
   LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14);
@@ -433,7 +538,7 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  NVIC_SetPriority(EXTI3_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
+  NVIC_SetPriority(EXTI3_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
   NVIC_EnableIRQ(EXTI3_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -445,17 +550,28 @@ static void MX_GPIO_Init(void)
 void send_ranging(void){
   
   uint8_t tx_msg[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0x43, 0x02, 0, 0 };
-  port_set_dw_ic_spi_fastrate();
-  dwt_forcetrxoff();
+  uint16_t uDelay = 1000; //1ms
+  
+  //dwt_forcetrxoff();
+  //send the message
+  dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
   dwt_writetxdata(sizeof(tx_msg), tx_msg, 0);
   dwt_writetxfctrl(sizeof(tx_msg), 0, 1);
   dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
-  while (!(dwt_readsysstatuslo() & DWT_INT_TXFRS_BIT_MASK))//warte bis Übertragung abgeschlossen ist
+  //warte bis Übertragung abgeschlossen ist
+  uint32_t start = LL_TIM_GetCounter(TIM1);
+  while (!(dwt_readsysstatuslo() & DWT_INT_TXFRS_BIT_MASK)) 
   {
+    if(((LL_TIM_GetCounter(TIM1)-start) & UINT16_MAX) > uDelay)
+    {
+      // Timeout occurred
+      return;
+    }
   }
+  //speichere die Zeit des Sendens in timestamp und lösche das Flag
   dwt_readtxtimestamp(timestamp);
   dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
-
+  //warte auf die Antwort und falls paket gut speichere die zeit den inhalt(inhalt hier weglassen?) und lösche das Flag
   waitforsysstatus(NULL, NULL, (DWT_INT_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR), 0);
   if(dwt_readsysstatuslo() & DWT_INT_RXFCG_BIT_MASK)
   {
@@ -466,14 +582,16 @@ void send_ranging(void){
   else //fehlerhaftes Paket empfangen
   {
     dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+    return;
   }
-
-  uint8_t tx_msg2[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0,0,0,0,0,0,0,0,0,0,0x43, 0x02, 0, 0 }; //könnte man natürlich kleiner machen
+  //in dieser message sollen jetzt auch die timestamps mitgeschickt werden, um das ganze 2 way zu machen kann man hier auch mit delayed send weitere timestamps mitsenden
+  uint8_t tx_msg2[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E',0x43, 0x02, 0,0,0,0,0,0,0,0,0,0, 0, 0 }; 
   for(int i = 0; i < 5; i++) //die timestamps in das zu sendende Paket schreiben
   {
-    tx_msg2[10 + i] = timestamp[i]; //10 stellen nach DECAWAVE ersten 5 die sendezeit des ersten und danach die empfangszeit des antwortpakets
-    tx_msg2[15 + i] = rx_timestamp[i]; 
+    tx_msg2[12 + i] = timestamp[i]; //10 stellen nach DECAWAVE ersten 5 die sendezeit des ersten und danach die empfangszeit des antwortpakets
+    tx_msg2[17 + i] = rx_timestamp[i]; 
   }
+  //sende die 2te message mit den timestamps
   dwt_writetxdata(sizeof(tx_msg2), tx_msg2, 0);
   dwt_writetxfctrl(sizeof(tx_msg2), 0, 1);
   dwt_starttx(DWT_START_TX_IMMEDIATE);
@@ -481,9 +599,10 @@ void send_ranging(void){
   
 }
 void receive_ranging(void){
-  uint8_t tag_timestamp[5];
-  uint8_t tag_rx_timestamp[5];
-  port_set_dw_ic_spi_fastrate();
+  uint8_t initiator_timestamp[5];
+  uint8_t initiator_rx_timestamp[5];
+  uint16_t uDelay = 1000; //1ms
+  
   dwt_rxenable(DWT_START_RX_IMMEDIATE);
   waitforsysstatus(NULL, NULL, (DWT_INT_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR), 0);
   if(dwt_readsysstatuslo() & DWT_INT_RXFCG_BIT_MASK)
@@ -495,16 +614,23 @@ void receive_ranging(void){
   else //fehlerhaftes Paket empfangen
   {
     dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+    return;
   }
 
 
-  uint8_t tx_msg[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0x43, 0x02, 0, 0 };
+  uint8_t tx_msg[] = { 0xC5, 0, 'D', 'E', 'C', 'A', 'W', 'A', 'V', 'E', 0x43, 0x02, 0, 0 }; //nachricht aus beispiel ist es hier wichtig sich an die standards zu halten?
   dwt_forcetrxoff();
   dwt_writetxdata(sizeof(tx_msg), tx_msg, 0);
   dwt_writetxfctrl(sizeof(tx_msg), 0, 1);
   dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
+  uint32_t start = LL_TIM_GetCounter(TIM1);
   while (!(dwt_readsysstatuslo() & DWT_INT_TXFRS_BIT_MASK))//warte bis Übertragung abgeschlossen ist
   {
+    if(((LL_TIM_GetCounter(TIM1)-start) & UINT16_MAX) > uDelay)
+    {
+      // Timeout occurred
+      return;
+    }
   }
   dwt_readtxtimestamp(timestamp);
   dwt_writesysstatuslo(DWT_INT_TXFRS_BIT_MASK);
@@ -519,19 +645,20 @@ void receive_ranging(void){
     
     for(int i = 0; i < 5; i++) //die anderen timestamps aus dem empfangenen Paket auslesen
     {
-      tag_timestamp[i] = rx_buffer[10 + i];
-      tag_rx_timestamp[i] = rx_buffer[15 + i];
+      initiator_timestamp[i] = rx_buffer[12 + i];
+      initiator_rx_timestamp[i] = rx_buffer[17 + i];
     }
   }
   else //fehlerhaftes Paket empfangen
   {
     dwt_writesysstatuslo(SYS_STATUS_ALL_RX_ERR); 
+    return;
   }
   uint64_t time_of_flight;
   //zeit zwichen empfangen und senden der nachricht
   delay = timestamp_to_64bit(timestamp) - timestamp_to_64bit(rx_timestamp); 
   //gesamte zeit zwichen ersten sendung und dem ankommen der antwort minus dem delay im DW selber also nur die flugzeit
-  time_of_flight = timestamp_to_64bit(tag_rx_timestamp) - timestamp_to_64bit(tag_timestamp) - delay; 
+  time_of_flight = timestamp_to_64bit(initiator_rx_timestamp) - timestamp_to_64bit(initiator_timestamp) - delay; 
   //flugzeit*lightspeed /2 *conversion from UWB time units to seconds also sollte hier die Distanz in Metern rauskommen
   distance = (double) time_of_flight * 149896229 * (1.0 / (499.2e6 * 128.0)); 
 }
@@ -544,8 +671,19 @@ uint64_t timestamp_to_64bit(uint8_t *timestamp) //evtl anders herum wenn die byt
     ts <<= 8;
     ts |= timestamp[i];
   }
-  return ts;
+  return ts & TS_MASK; //maske um die 40 bit timestamp overflow zu behandeln.
 }
+
+// uint64_t timestamp_to_64bit(uint8_t *timestamp) //evtl anders herum wenn die bytes in der falschen reihenfolge sind Little-Endian vs Big-Endian
+// {
+//   uint64_t ts = 0;
+//   for (int i = 5; i > 0; i--)
+//   {
+//     ts <<= 8;
+//     ts |= timestamp[i];
+//   }
+//   return ts & TS_MASK; //maske um die 40 bit timestamp overflow zu behandeln.
+// }
 
 void waitforsysstatus(uint32_t *lo_result, uint32_t *hi_result, uint32_t lo_mask, uint32_t hi_mask)
 {
@@ -588,7 +726,7 @@ void waitforsysstatus(uint32_t *lo_result, uint32_t *hi_result, uint32_t lo_mask
 
 /* USER CODE END 4 */
 
-/* MPU Configuration */
+ /* MPU Configuration */
 
 void MPU_Config(void)
 {
@@ -597,16 +735,17 @@ void MPU_Config(void)
   LL_MPU_Disable();
 
   /** Initializes and configures the Region and the memory to be protected
-   */
-  LL_MPU_ConfigRegion(LL_MPU_REGION_NUMBER0, 0x87, 0x0, LL_MPU_REGION_SIZE_4GB | LL_MPU_TEX_LEVEL0 | LL_MPU_REGION_NO_ACCESS | LL_MPU_INSTRUCTION_ACCESS_DISABLE | LL_MPU_ACCESS_SHAREABLE | LL_MPU_ACCESS_NOT_CACHEABLE | LL_MPU_ACCESS_NOT_BUFFERABLE);
+  */
+  LL_MPU_ConfigRegion(LL_MPU_REGION_NUMBER0, 0x87, 0x0, LL_MPU_REGION_SIZE_4GB|LL_MPU_TEX_LEVEL0|LL_MPU_REGION_NO_ACCESS|LL_MPU_INSTRUCTION_ACCESS_DISABLE|LL_MPU_ACCESS_SHAREABLE|LL_MPU_ACCESS_NOT_CACHEABLE|LL_MPU_ACCESS_NOT_BUFFERABLE);
   /* Enables the MPU */
   LL_MPU_Enable(LL_MPU_CTRL_PRIVILEGED_DEFAULT);
+
 }
 
 /**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -619,12 +758,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
- * @brief  Reports the name of the source file and the source line number
- *         where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

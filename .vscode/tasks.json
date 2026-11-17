@@ -1,20 +1,64 @@
 {
     "version": "2.0.0",
     "tasks": [
+        // {
+        //     "label": "STM32F401 Build",
+        //     "type": "shell",
+        //     "command": "cmake",
+        //     "args": [
+        //         "--build",
+        //         "build",
+        //         "--parallel"
+        //     ],
+        //     "group": {
+        //         "kind": "build",
+        //         "isDefault": true
+        //     },
+        //     "problemMatcher": []
+        // },
         {
-            "label": "STM32F401 Build",
+            "label": "UWB: Configure Initiator",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "INITIATOR"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "UWB: Build Initiator",
             "type": "shell",
             "command": "cmake",
             "args": [
                 "--build",
-                "build",
-                "--parallel"
+                "${workspaceFolder}/build/initiator"
             ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "UWB: Configure Responder",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "RESPONDER"
+            ],
             "problemMatcher": []
+        },
+        {
+            "label": "UWB: Build Responder",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build/responder"
+            ],
+            "problemMatcher": ["$gcc"]
         },
         {
             "label": "STM32F401: Configure",
@@ -33,18 +77,37 @@
             "problemMatcher": []
         },
         {
-            "label": "STM32F401: Flash",
+            "label": "H753ZI: Flash Initiator",
             "type": "shell",
             "command": "STM32_Programmer_CLI",
             "args": [
                 "-c",
                 "port=SWD",
+                "mode=UR",       
+                "sn=0036002E3335510235383531",
                 "-w",
                 "${workspaceFolder}/build/UWBMico.elf",
                 "-v",
                 "-rst"
             ],
-            "dependsOn": "STM32F401 Build",
+            "dependsOn": "UWB: Build Initiator",
+            "problemMatcher": []
+        },
+        {
+            "label": "H753ZI: Flash Responder",
+            "type": "shell",
+            "command": "STM32_Programmer_CLI",
+            "args": [
+                "-c",
+                "port=SWD",
+                "mode=UR",    
+                "sn=0027001E3335510235383531",
+                "-w",
+                "${workspaceFolder}/build/UWBMico.elf",
+                "-v",
+                "-rst"
+            ],
+            "dependsOn": "UWB: Build Responder",
             "problemMatcher": []
         }
     ]

@@ -35,6 +35,7 @@
  */
 int openspi(/*SPI_TypeDef* SPIx*/)
 {
+    while(true);
     return 0;
 } // end openspi()
 
@@ -45,7 +46,8 @@ int openspi(/*SPI_TypeDef* SPIx*/)
  * returns 0 for success, or -1 for error
  */
 int closespi(void)
-{
+{   
+    while(true);
     return 0;
 } // end closespi()
 
@@ -58,7 +60,7 @@ int closespi(void)
  */
 int32_t writetospiwithcrc(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t bodyLength, const uint8_t *bodyBuffer, uint8_t crc8)
 {
-
+    while(true);
 
     return 0;
 } // end writetospiwithcrc()
@@ -75,11 +77,16 @@ int32_t writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t 
     decaIrqStatus_t stat;
 
     stat = decamutexon();
-
+    LL_SPI_Disable(SPI1);
     LL_SPI_SetTransferSize(SPI1, headerLength + bodyLength);
-
+    LL_SPI_ClearFlag_TXTF(SPI1);
+    //LL_SPI_ClearFlag_RXTF(SPI1);
     LL_SPI_ClearFlag_EOT(SPI1);
-
+    LL_SPI_Enable(SPI1);
+    while(!LL_SPI_IsEnabled(SPI1))
+  {
+    //wait until SPI is enabled
+  }
     LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
     
     LL_SPI_StartMasterTransfer(SPI1);
@@ -87,31 +94,36 @@ int32_t writetospi(uint16_t headerLength, const uint8_t *headerBuffer, uint16_t 
     for (uint16_t i = 0; i < headerLength; i++) //transmit header
     {           
         while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
-            //wait (muss ich hier warten oder könnte ich auch mit interrupt arbeiten?)
+            //wait 
         }
-        LL_SPI_TransmitData8(SPI1, headerBuffer[i]); 
+        LL_SPI_TransmitData8(SPI1, *headerBuffer++); 
         
         while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
             //wait
         }
         LL_SPI_ReceiveData8(SPI1); //read dummy data
+        //headerBuffer++; //increment pointer to next byte
     }
     for (uint16_t i = 0; i < bodyLength; i++) //transmit body
     {           
         while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
             //wait
         }
-        LL_SPI_TransmitData8(SPI1, bodyBuffer[i]);
+        
+        LL_SPI_TransmitData8(SPI1, *bodyBuffer++); //send body data
 
         while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
             //wait
         }
-        LL_SPI_ReceiveData8(SPI1); //read dummy data    
+        LL_SPI_ReceiveData8(SPI1); //read dummy data 
+        //bodyBuffer++; //increment pointer to next byte   
     }
     while (!LL_SPI_IsActiveFlag_EOT(SPI1)){ 
         //wait for end of transfer
     }
     LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
+    LL_SPI_ClearFlag_EOT(SPI1);
+    
 
     decamutexoff(stat);
 
@@ -153,8 +165,18 @@ int32_t readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readl
     decaIrqStatus_t stat;
 
     stat = decamutexon();
+
+    LL_SPI_Disable(SPI1);
     LL_SPI_SetTransferSize(SPI1, headerLength + readlength);
+    LL_SPI_ClearFlag_TXTF(SPI1);
+    //LL_SPI_ClearFlag_RXTF(SPI1);
     LL_SPI_ClearFlag_EOT(SPI1);
+    LL_SPI_Enable(SPI1);
+    while(!LL_SPI_IsEnabled(SPI1))
+    {
+    //wait until SPI is enabled
+    }
+
     LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS low
     LL_SPI_StartMasterTransfer(SPI1);
     
@@ -163,11 +185,12 @@ int32_t readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readl
         while (!LL_SPI_IsActiveFlag_TXP(SPI1)){
             //wait
         }
-        LL_SPI_TransmitData8(SPI1, headerBuffer[i]); //send header  
+        LL_SPI_TransmitData8(SPI1, *headerBuffer); //send header  
         while (!LL_SPI_IsActiveFlag_RXP(SPI1)){
             //wait
         }
         LL_SPI_ReceiveData8(SPI1); //read dummy data
+        headerBuffer++; //increment pointer to next byte
     }
     for (uint16_t i = 0; i < readlength; i++)
     {           
@@ -184,6 +207,9 @@ int32_t readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readl
         //wait for end of transfer
     }
     LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_14); //CS high
+    LL_SPI_ClearFlag_EOT(SPI1);
+    
+
     decamutexoff(stat);
 
     return 0;

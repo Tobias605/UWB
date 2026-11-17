@@ -11,7 +11,12 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
-
+set(UWB_ROLE "INITIATOR" CACHE STRING "UWB role: INITIATOR or RESPONDER")
+set_property(CACHE UWB_ROLE PROPERTY STRINGS INITIATOR RESPONDER)
+string(TOUPPER "${UWB_ROLE}" UWB_ROLE_UPPER)
+if(NOT UWB_ROLE_UPPER STREQUAL "INITIATOR" AND NOT UWB_ROLE_UPPER STREQUAL "RESPONDER")
+    message(FATAL_ERROR "Invalid UWB_ROLE: ${UWB_ROLE}. Must be INITIATOR or RESPONDER.")
+endif()
 
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -54,11 +59,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    "${CMAKE_CURRENT_SOURCE_DIR}/.DW3000"
 )
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    APP_UWB_ROLE_${UWB_ROLE_UPPER}
+    
 )
 
 # Remove wrong libob.a library dependency when using cpp files
@@ -70,3 +78,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+

@@ -7,8 +7,20 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
 		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
-            "cacheVariables": {
+            "cacheVariables": { "UWB_ROLE": "INITIATOR"
             }
+        },
+        {
+            "name": "RESPONDER",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build/responder",
+            "cacheVariables": { "UWB_ROLE": "RESPONDER" }
+        },
+        {
+            "name": "INITIATOR",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build/initiator",
+            "cacheVariables": { "UWB_ROLE": "INITIATOR" }
         },
         {
             "name": "Debug",
