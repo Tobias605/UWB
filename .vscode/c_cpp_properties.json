@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/.DW3000",
-                "${workspaceFolder}/.DW3000"
+                "${workspaceFolder}/.BRDPRT"
             ],
             "defines": [
                 "_DEBUG",
